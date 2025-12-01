@@ -1,0 +1,45 @@
+{
+    "name": "redact-app",
+    "version": "1.0.0",
+    "description": "Secure PDF Redaction App",
+    "main": "electron/main.js",
+    "scripts": {
+        "start": "cross-env NODE_ENV=development electron .",
+        "dev:frontend": "cd frontend && npm run dev",
+        "dev:backend": "cd backend && ./venv/bin/uvicorn server:app --reload --port 8000",
+        "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\" \"wait-on http://localhost:5173 && npm start\"",
+        "build:frontend": "cd frontend && npm run build",
+        "build:backend": "./backend/venv/bin/pyinstaller --name server --onefile --distpath backend_dist backend/server.py",
+        "dist": "npm run build:frontend && npm run build:backend && electron-builder"
+    },
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "concurrently": "^8.2.2",
+        "cross-env": "^10.1.0",
+        "electron": "^28.0.0",
+        "electron-builder": "^24.9.1",
+        "wait-on": "^7.2.0"
+    },
+    "build": {
+        "appId": "com.redactapp.desktop",
+        "productName": "Redact App",
+        "files": [
+            "electron/**/*",
+            "frontend/dist/**/*"
+        ],
+        "extraResources": [
+            {
+                "from": "backend_dist/server",
+                "to": "backend_dist/server"
+            }
+        ],
+        "mac": {
+            "target": "dmg",
+            "hardenedRuntime": false
+        },
+        "directories": {
+            "output": "dist"
+        }
+    }
+}
