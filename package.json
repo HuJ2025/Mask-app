@@ -23,7 +23,7 @@
     },
     "build": {
         "appId": "com.redactapp.desktop",
-        "productName": "Redact App",
+        "productName": "PDF Mask",
         "files": [
             "electron/**/*",
             "frontend/dist/**/*"

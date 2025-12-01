@@ -1,4 +1,4 @@
-# Redact App
+# PDF Mask
 
 A secure desktop application for redacting sensitive information from PDFs.
 
