@@ -7,9 +7,10 @@ interface PasswordModalProps {
     onClose: () => void;
     onSubmit: (password: string) => void;
     isDecrypting: boolean;
+    error: string | null;
 }
 
-export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, onSubmit, isDecrypting }) => {
+export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, onSubmit, isDecrypting, error }) => {
     const [password, setPassword] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -39,14 +40,28 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Enter password"
-                                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors text-white"
-                                autoFocus
-                            />
+                            <div className="space-y-2">
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Enter password"
+                                    className={`w-full bg-slate-950 border rounded-xl px-4 py-3 focus:outline-none transition-colors text-white ${error
+                                            ? 'border-red-500 focus:border-red-500'
+                                            : 'border-slate-700 focus:border-indigo-500'
+                                        }`}
+                                    autoFocus
+                                />
+                                {error && (
+                                    <motion.p
+                                        initial={{ opacity: 0, y: -5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="text-red-400 text-sm text-center"
+                                    >
+                                        {error}
+                                    </motion.p>
+                                )}
+                            </div>
                             <div className="flex gap-3">
                                 <button
                                     type="button"

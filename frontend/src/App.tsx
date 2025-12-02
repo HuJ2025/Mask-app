@@ -12,7 +12,7 @@ const WS_URL = 'ws://localhost:8000';
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [words, setWords] = useState<string[]>([]);
-  const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error' | 'cancelling'>('idle');
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [downloadUrl, setDownloadUrl] = useState('');
@@ -33,27 +33,65 @@ function App() {
   }, []);
 
   // WebSocket Connection
+  // WebSocket Connection
   useEffect(() => {
-    const ws = new WebSocket(`${WS_URL}/ws/${clientId}`);
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setProgress(data.percentage);
-      setMessage(data.message);
+    let ws: WebSocket;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
 
-      if (data.message && data.message.startsWith("Error:")) {
-        setStatus('error');
-      } else if (data.percentage === 100) {
-        setStatus('done');
-      }
+    const connect = () => {
+      ws = new WebSocket(`${WS_URL}/ws/${clientId}`);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.message === "Cancelled") {
+          setStatus('idle');
+          setProgress(0);
+          setMessage('');
+          return;
+        }
+
+        setProgress(data.percentage);
+        setMessage(data.message);
+
+        if (data.message && data.message.startsWith("Error:")) {
+          setStatus('error');
+        } else if (data.percentage === 100) {
+          setStatus('done');
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected, attempting to reconnect...');
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        ws.close();
+      };
+
+      wsRef.current = ws;
     };
-    wsRef.current = ws;
+
+    connect();
+
     return () => {
-      ws.close();
+      if (ws) {
+        ws.onclose = null; // Prevent reconnect on unmount
+        ws.close();
+      }
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, [clientId]);
 
   // Password Protection State
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [decrypting, setDecrypting] = useState(false);
 
@@ -70,6 +108,7 @@ function App() {
 
       if (data.encrypted) {
         setPendingFile(file);
+        setPasswordError(null);
         setShowPasswordModal(true);
       } else {
         setFile(file);
@@ -87,6 +126,7 @@ function App() {
     if (!pendingFile) return;
 
     setDecrypting(true);
+    setPasswordError(null);
     const formData = new FormData();
     formData.append('file', pendingFile);
     formData.append('password', password);
@@ -99,7 +139,8 @@ function App() {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Decryption failed');
+        setPasswordError(err.error || 'Decryption failed');
+        return;
       }
 
       const blob = await res.blob();
@@ -108,11 +149,12 @@ function App() {
       setFile(decryptedFile);
       setShowPasswordModal(false);
       setPendingFile(null);
+      setPasswordError(null);
       setStatus('idle');
       setProgress(0);
       setMessage('');
     } catch (e: any) {
-      alert(e.message || "Incorrect password or decryption error");
+      setPasswordError(e.message || "Incorrect password or decryption error");
     } finally {
       setDecrypting(false);
     }
@@ -139,6 +181,7 @@ function App() {
 
       const data = await res.json();
       setStatus('processing');
+      setMessage('Processing...');
 
       setDownloadUrl(`${API_URL}/api/download?temp_dir=${encodeURIComponent(data.temp_dir)}&filename=${encodeURIComponent(data.filename)}`);
 
@@ -160,10 +203,34 @@ function App() {
     }, 1000);
   };
 
+  const handleCancel = async () => {
+    if (status !== 'processing' && status !== 'uploading') return;
+
+    setStatus('cancelling');
+    setMessage('Cancelling...');
+
+    const formData = new FormData();
+    formData.append('client_id', clientId);
+
+    try {
+      await fetch(`${API_URL}/api/cancel`, {
+        method: 'POST',
+        body: formData
+      });
+      // Wait for WebSocket "Cancelled" message to reset state
+    } catch (e) {
+      console.error("Error cancelling:", e);
+      // If API fails, maybe just reset?
+      setStatus('idle');
+    }
+  };
+
   const fileUrl = React.useMemo(() => {
     if (file) return URL.createObjectURL(file);
     return '';
   }, [file]);
+
+  const isLocked = status === 'uploading' || status === 'processing' || status === 'cancelling';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/30 pt-10">
@@ -189,6 +256,7 @@ function App() {
                 setProgress(0);
                 setMessage('');
               }}
+              disabled={isLocked}
             />
 
             <WordList
@@ -196,6 +264,7 @@ function App() {
               onAddWord={(word) => setWords([...words, word])}
               onRemoveWord={(index) => setWords(words.filter((_, i) => i !== index))}
               onClearWords={() => setWords([])}
+              disabled={isLocked}
             />
 
             <ActionArea
@@ -207,6 +276,7 @@ function App() {
               onStart={handleRedact}
               onDownload={handleDownloadClick}
               onRetry={() => setStatus('idle')}
+              onCancel={handleCancel}
             />
           </div>
 
@@ -218,9 +288,11 @@ function App() {
           onClose={() => {
             setShowPasswordModal(false);
             setPendingFile(null);
+            setPasswordError(null);
           }}
           onSubmit={handleDecryptSubmit}
           isDecrypting={decrypting}
+          error={passwordError}
         />
       </div>
     </div>

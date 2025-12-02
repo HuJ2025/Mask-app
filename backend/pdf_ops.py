@@ -8,7 +8,7 @@ import fitz  # PyMuPDF
 from PIL import ImageStat
 from pdf2image import convert_from_bytes
 from pytesseract import Output
-from PyPDF2 import PdfReader, PdfWriter
+import pikepdf
 import ocrmypdf._progressbar
 
 try:
@@ -48,11 +48,23 @@ def is_blank_page(image, threshold=0.98):
     return (stat.mean[0] / 255) > threshold
 
 
+import pikepdf
+
+# ...
+
 def correct_pdf_rotation(pdf_bytes: bytes) -> bytes:
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    writer = PdfWriter()
+    # Use pikepdf instead of PyPDF2 to avoid PyCryptodome dependency issues
+    pdf = pikepdf.open(io.BytesIO(pdf_bytes))
     images = convert_from_bytes(pdf_bytes, dpi=300)
+    
+    # We need to iterate through pages. 
+    # Note: pikepdf pages are 0-indexed.
+    # convert_from_bytes returns a list of images, one per page.
+    
     for i, image in enumerate(images):
+        if i >= len(pdf.pages):
+            break
+            
         if not is_blank_page(image):
             try:
                 osd = pytesseract.image_to_osd(image.convert("RGB"), output_type=Output.DICT)
@@ -62,13 +74,14 @@ def correct_pdf_rotation(pdf_bytes: bytes) -> bytes:
         else:
             angle = 0
 
-        page = reader.pages[i]
         if angle:
-            page.rotate(angle)
-        writer.add_page(page)
+            # pikepdf rotation is clockwise, tesseract returns clockwise rotation needed
+            # to make it upright. So we rotate by that amount.
+            # However, pikepdf.Page.rotate(angle, relative=True) adds to current rotation.
+            pdf.pages[i].rotate(angle, relative=True)
 
     out = io.BytesIO()
-    writer.write(out)
+    pdf.save(out)
     return out.getvalue()
 
 
@@ -148,11 +161,14 @@ def redact_pdf_bytes_uncopyable(pdf_bytes: bytes, literals: list[str]) -> bytes:
     doc.close()
     return pdf_out
 
-def process_pdf(input_path: str, output_path: str, literals: list[str], progress_callback=None) -> None:
+def process_pdf(input_path: str, output_path: str, literals: list[str], progress_callback=None, check_cancel=None) -> None:
     """
     Orchestrates the full redaction pipeline.
     """
     def report(pct, msg):
+        if check_cancel and check_cancel():
+            raise Exception("Cancelled")
+            
         if progress_callback:
             progress_callback(pct, msg)
         else:
@@ -174,6 +190,9 @@ def process_pdf(input_path: str, output_path: str, literals: list[str], progress
     
     # Wrap callback to scale OCR progress (0-100) to global progress (40-70)
     def ocr_progress_wrapper(*args):
+        if check_cancel and check_cancel():
+            raise Exception("Cancelled")
+
         if progress_callback:
             try:
                 # Handle variable arguments (self, pct, msg) or (pct, msg)

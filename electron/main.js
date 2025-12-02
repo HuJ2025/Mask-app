@@ -13,7 +13,7 @@ const FRONTEND_PORT = 5173;
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1000,
-        height: 800,
+        height: 850,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
