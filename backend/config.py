@@ -10,7 +10,17 @@ CONFIG_FILE = Path.home() / ".pdfmask"
 
 DEFAULT_CONFIG = {
     "words": [],
-    "passwords": []
+    "passwords": [],
+    "email_settings": {
+        "smtp_server": "",
+        "smtp_port": 587,
+        "sender_email": "",
+        "sender_password": "",
+        "default_recipient": ""
+    },
+    "general_settings": {
+        "save_path": str(Path.home() / "PDFMask")
+    }
 }
 
 class Config:
@@ -29,6 +39,18 @@ class Config:
                 for key, value in DEFAULT_CONFIG.items():
                     if key not in config:
                         config[key] = value
+                
+                # Ensure nested settings have all keys
+                for section in ["email_settings", "general_settings"]:
+                    if section in config:
+                        for k, v in DEFAULT_CONFIG[section].items():
+                            if k not in config[section]:
+                                config[section][k] = v
+
+                # Enforce default save_path if empty
+                if not config["general_settings"].get("save_path"):
+                    config["general_settings"]["save_path"] = DEFAULT_CONFIG["general_settings"]["save_path"]
+                
                 return config
         except Exception as e:
             logger.error(f"Error loading config: {e}")
@@ -55,5 +77,27 @@ class Config:
         self._config["passwords"] = passwords
         self._save_config(self._config)
 
+    def get_email_settings(self) -> Dict:
+        return self._config.get("email_settings", DEFAULT_CONFIG["email_settings"])
+
+    def set_email_settings(self, settings: Dict):
+        self._config["email_settings"] = settings
+        self._save_config(self._config)
+
+    def get_general_settings(self) -> Dict:
+        settings = self._config.get("general_settings", DEFAULT_CONFIG["general_settings"])
+        if not settings.get("save_path"):
+             settings["save_path"] = DEFAULT_CONFIG["general_settings"]["save_path"]
+        return settings
+
+    def set_general_settings(self, settings: Dict):
+        if not settings.get("save_path"):
+            settings["save_path"] = DEFAULT_CONFIG["general_settings"]["save_path"]
+        self._config["general_settings"] = settings
+        self._save_config(self._config)
+
     def get_all(self) -> Dict:
+        # Ensure save_path is populated in the returned full config
+        if not self._config["general_settings"].get("save_path"):
+             self._config["general_settings"]["save_path"] = DEFAULT_CONFIG["general_settings"]["save_path"]
         return self._config

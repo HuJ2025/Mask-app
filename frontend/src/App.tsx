@@ -7,6 +7,7 @@ import { ActionArea } from './components/ActionArea';
 import { PDFPreview } from './components/PDFPreview';
 import { PasswordModal } from './components/PasswordModal';
 import { SettingsModal } from './components/SettingsModal';
+import { EmailModal } from './components/EmailModal';
 
 const API_URL = 'http://localhost:8000';
 const WS_URL = 'ws://localhost:8000';
@@ -36,6 +37,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [configWords, setConfigWords] = useState<string[]>([]);
   const [configPasswords, setConfigPasswords] = useState<string[]>([]);
+  const [configEmailSettings, setConfigEmailSettings] = useState<{ smtp_server: string; smtp_port: number; sender_email: string; sender_password: string; default_recipient: string } | null>(null);
+  const [configGeneralSettings, setConfigGeneralSettings] = useState<{ save_path: string } | null>(null);
 
   // Load config on mount
   useEffect(() => {
@@ -44,6 +47,9 @@ function App() {
       .then(data => {
         setConfigWords(data.words || []);
         setConfigPasswords(data.passwords || []);
+        setConfigEmailSettings(data.email_settings || null);
+        setConfigGeneralSettings(data.general_settings || null);
+
         // Initialize words with default config if empty
         if (data.words && data.words.length > 0) {
           setWords(data.words);
@@ -52,15 +58,27 @@ function App() {
       .catch(err => console.error("Error loading config:", err));
   }, []);
 
-  const handleSaveConfig = async (newWords: string[], newPasswords: string[]) => {
+  const handleSaveConfig = async (
+    newWords: string[],
+    newPasswords: string[],
+    newEmailSettings: { smtp_server: string; smtp_port: number; sender_email: string; sender_password: string; default_recipient: string },
+    newGeneralSettings: { save_path: string }
+  ) => {
     try {
       await fetch(`${API_URL}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ words: newWords, passwords: newPasswords })
+        body: JSON.stringify({
+          words: newWords,
+          passwords: newPasswords,
+          email_settings: newEmailSettings,
+          general_settings: newGeneralSettings
+        })
       });
       setConfigWords(newWords);
       setConfigPasswords(newPasswords);
+      setConfigEmailSettings(newEmailSettings);
+      setConfigGeneralSettings(newGeneralSettings);
 
       // Update current words: add new defaults
       setWords(prev => {
@@ -267,6 +285,7 @@ function App() {
   };
 
   const [batchProgress, setBatchProgress] = useState('');
+  const [lastSaveDir, setLastSaveDir] = useState<string | null>(null);
 
   const handleRedact = async () => {
     if (files.length === 0 || words.length === 0) return;
@@ -274,8 +293,14 @@ function App() {
     setGlobalStatus('processing');
     setMessage('Starting batch processing...');
     setBatchProgress('');
+    setLastSaveDir(null);
+
+    // Generate batch ID (timestamp)
+    const now = new Date();
+    const batchId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
 
     // Process sequentially
+    let currentBatchDir = '';
     for (let i = 0; i < files.length; i++) {
       const fileItem = files[i];
       if (fileItem.status === 'error') continue;
@@ -291,6 +316,7 @@ function App() {
       formData.append('file', fileItem.file);
       formData.append('words', words.join(','));
       formData.append('client_id', clientId);
+      formData.append('batch_id', batchId);
 
       try {
         // This fetch is now synchronous on the backend (waits for completion)
@@ -302,6 +328,9 @@ function App() {
         if (!res.ok) throw new Error('Processing failed');
 
         const data = await res.json();
+        if (data.save_dir) {
+          currentBatchDir = data.save_dir;
+        }
 
         setFiles(prev => prev.map(f => f.id === fileItem.id ? {
           ...f,
@@ -320,8 +349,12 @@ function App() {
       }
     }
 
+    if (currentBatchDir) {
+      setLastSaveDir(currentBatchDir);
+    }
+
     setGlobalStatus('done');
-    setMessage('All files processed.');
+    setMessage(currentBatchDir ? `Files saved to: ${currentBatchDir}` : 'All files processed.');
     setBatchProgress('');
   };
 
@@ -366,6 +399,7 @@ function App() {
         setMessage('');
         setBatchProgress('');
         setDownloadUrl('');
+        setLastSaveDir(null);
       }, 1000);
 
     } catch (e: any) {
@@ -387,6 +421,7 @@ function App() {
         setMessage('');
         setBatchProgress('');
         setDownloadUrl('');
+        setLastSaveDir(null);
       }, 1000);
     }
   };
@@ -410,6 +445,52 @@ function App() {
       console.error("Error cancelling:", e);
       setGlobalStatus('idle');
     }
+  };
+
+  const handleOpenFolder = async () => {
+    try {
+      await fetch(`${API_URL}/api/open_folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: lastSaveDir })
+      });
+    } catch (e) {
+      console.error("Error opening folder:", e);
+    }
+  };
+
+  const [showEmailModal, setShowEmailModal] = useState(false);
+
+  const handleSendEmail = async (recipient: string, subject: string, body: string) => {
+    if (!lastSaveDir) return;
+
+    try {
+      const res = await fetch(`${API_URL}/api/send_email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient,
+          subject,
+          body,
+          attachment_path: lastSaveDir
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to open email client');
+      }
+
+      alert('Email client opened! Please review and send the draft.');
+    } catch (e: any) {
+      console.error("Error opening email client:", e);
+      alert(`Failed to open email client: ${e.message}`);
+      throw e; // Re-throw to let modal know it failed
+    }
+  };
+
+  const handleEmail = () => {
+    setShowEmailModal(true);
   };
 
   const currentFile = files[previewIndex];
@@ -470,10 +551,10 @@ function App() {
               progress={progress}
               message={message}
               batchProgress={batchProgress}
-              downloadUrl={files.length === 1 ? downloadUrl : undefined}
               canStart={files.length > 0 && words.length > 0 && !files.some(f => f.status === 'encrypted')}
               onStart={handleRedact}
-              onDownload={handleDownloadClick}
+              onOpenFolder={handleOpenFolder}
+              onEmail={handleEmail}
               onRetry={() => setGlobalStatus('idle')}
               onCancel={handleCancel}
               isBatch={files.length > 1}
@@ -512,6 +593,16 @@ function App() {
           onSave={handleSaveConfig}
           initialWords={configWords}
           initialPasswords={configPasswords}
+          initialEmailSettings={configEmailSettings || undefined}
+          initialGeneralSettings={configGeneralSettings || undefined}
+        />
+
+        <EmailModal
+          isOpen={showEmailModal}
+          onClose={() => setShowEmailModal(false)}
+          onSend={handleSendEmail}
+          defaultRecipient={configEmailSettings?.default_recipient || ''}
+          files={files.filter(f => f.status === 'done').map(f => f.outputFilename || f.file.name)}
         />
       </div>
     </div>

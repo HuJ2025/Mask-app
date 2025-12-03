@@ -13,8 +13,10 @@ from encryption import check_encryption, decrypt_pdf, verify_password
 from websocket import ConnectionManager
 from utils import cleanup_temp
 from config import Config
+from email_ops import open_system_mail_client
 from pydantic import BaseModel
 from typing import List
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -67,9 +69,21 @@ import threading
 # Store cancellation events: client_id -> threading.Event
 cancellation_events: dict[str, threading.Event] = {}
 
+class EmailSettings(BaseModel):
+    smtp_server: str
+    smtp_port: int
+    sender_email: str
+    sender_password: str
+    default_recipient: str
+
+class GeneralSettings(BaseModel):
+    save_path: str
+
 class ConfigModel(BaseModel):
     words: List[str]
     passwords: List[str]
+    email_settings: EmailSettings
+    general_settings: GeneralSettings
 
 @app.get("/api/config")
 async def get_config():
@@ -79,13 +93,16 @@ async def get_config():
 async def update_config(new_config: ConfigModel):
     config.set_words(new_config.words)
     config.set_passwords(new_config.passwords)
+    config.set_email_settings(new_config.email_settings.dict())
+    config.set_general_settings(new_config.general_settings.dict())
     return {"status": "ok"}
 
 @app.post("/api/redact")
 def redact_endpoint(
     file: UploadFile = File(...),
     words: str = Form(...),
-    client_id: str = Form(...)
+    client_id: str = Form(...),
+    batch_id: str = Form(None)
 ):
     literals = [w.strip() for w in words.split(',') if w.strip()]
     
@@ -96,7 +113,23 @@ def redact_endpoint(
     # Save temp file
     temp_dir = tempfile.mkdtemp()
     input_path = os.path.join(temp_dir, file.filename)
-    output_path = os.path.join(temp_dir, f"redacted_{file.filename}")
+    
+    # Auto-save directory
+    general_settings = config.get_general_settings()
+    save_base_path = general_settings.get("save_path", str(Path.home() / "PDFMask"))
+    save_dir = save_base_path
+    
+    if batch_id:
+        save_dir = os.path.join(save_dir, batch_id)
+        
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Use original filename with prefix or suffix? User didn't specify, but "redacted_" is standard.
+    # Let's keep "redacted_" prefix but save to PDFMask dir.
+    # Actually, let's save to temp first for processing, then copy to save_dir.
+    output_filename = f"redacted_{file.filename}"
+    output_path = os.path.join(temp_dir, output_filename)
+    final_save_path = os.path.join(save_dir, output_filename)
     
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -132,8 +165,17 @@ def redact_endpoint(
         if not os.path.exists(output_path):
             raise Exception("Output file was not created")
             
-        logger.info(f"Processing complete for {file.filename}, output at {output_path}")
-        return {"status": "done", "temp_dir": temp_dir, "filename": f"redacted_{file.filename}"}
+        # Copy to final destination
+        shutil.copy2(output_path, final_save_path)
+            
+        logger.info(f"Processing complete for {file.filename}, saved to {final_save_path}")
+        return {
+            "status": "done", 
+            "temp_dir": temp_dir, 
+            "filename": output_filename,
+            "saved_path": final_save_path,
+            "save_dir": save_dir
+        }
     except Exception as e:
         if str(e) == "Cancelled":
             logger.info(f"Task cancelled for {client_id}")
@@ -254,6 +296,61 @@ async def batch_zip_endpoint(files: List[BatchFile], background_tasks: Backgroun
         cleanup_temp(zip_path)
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+class OpenFolderRequest(BaseModel):
+    path: str = None
+
+@app.post("/api/open_folder")
+async def open_folder_endpoint(request: OpenFolderRequest):
+    import subprocess
+    import platform
+    
+    general_settings = config.get_general_settings()
+    default_path = general_settings.get("save_path", str(Path.home() / "PDFMask"))
+    
+    path = request.path if request.path else default_path
+    
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+        
+    try:
+        system_name = platform.system()
+        if system_name == 'Darwin':       # macOS
+            subprocess.run(['open', path])
+        elif system_name == 'Windows':    # Windows
+            os.startfile(path)
+        elif system_name == 'Linux':      # Linux
+            subprocess.run(['xdg-open', path])
+        else:
+            return JSONResponse(status_code=400, content={"error": "Unsupported OS"})
+            
+        return {"status": "opened", "path": path}
+    except Exception as e:
+        logger.error(f"Error opening folder: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+class SendEmailRequest(BaseModel):
+    recipient: str
+    subject: str
+    body: str
+    attachment_path: str
+
+@app.post("/api/send_email")
+async def send_email_endpoint(request: SendEmailRequest, background_tasks: BackgroundTasks):
+    try:
+        # Run in threadpool to avoid blocking
+        await asyncio.to_thread(
+            open_system_mail_client,
+            request.recipient,
+            request.subject,
+            request.body,
+            request.attachment_path
+        )
+        
+        return {"status": "opened"}
+    except Exception as e:
+        logger.error(f"Error opening email client: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

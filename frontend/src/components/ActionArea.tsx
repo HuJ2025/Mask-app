@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Download, RefreshCw, XCircle } from 'lucide-react';
+import { Play, FolderOpen, RefreshCw, XCircle, Mail } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface ActionAreaProps {
@@ -7,10 +7,10 @@ interface ActionAreaProps {
     progress: number;
     message: string;
     batchProgress?: string;
-    downloadUrl?: string;
     canStart: boolean;
     onStart: () => void;
-    onDownload: () => void;
+    onOpenFolder: () => void;
+    onEmail: () => void;
     onRetry: () => void;
     onCancel: () => void;
     isBatch?: boolean;
@@ -21,10 +21,10 @@ export const ActionArea: React.FC<ActionAreaProps> = ({
     progress,
     message,
     batchProgress,
-    downloadUrl,
     canStart,
     onStart,
-    onDownload,
+    onOpenFolder,
+    onEmail,
     onRetry,
     onCancel,
     isBatch = false
@@ -76,33 +76,34 @@ export const ActionArea: React.FC<ActionAreaProps> = ({
             {status === 'done' && (
                 <div className="space-y-4">
                     <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-4 rounded-xl text-center font-medium">
-                        {isBatch ? "Batch Processing Complete!" : "Redaction Complete!"}
+                        <div>{isBatch ? "Batch Processing Complete!" : "Redaction Complete!"}</div>
+                        <div className="text-sm mt-1 opacity-90">{message}</div>
                     </div>
-                    <div className="flex gap-4">
-                        {isBatch ? (
+                    <div className="flex flex-col gap-3">
+                        <div className="flex gap-3">
                             <button
-                                onClick={onDownload}
-                                className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                                onClick={onOpenFolder}
+                                className="flex-1 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                                title="Open Folder"
                             >
-                                <Download size={20} />
-                                Download All (ZIP)
+                                <FolderOpen size={20} />
+                                <span>Open Folder</span>
                             </button>
-                        ) : (
-                            <a
-                                href={downloadUrl}
-                                download
-                                onClick={onDownload}
-                                className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                            <button
+                                onClick={onEmail}
+                                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                                title="Send via Email"
                             >
-                                <Download size={20} />
-                                Download PDF
-                            </a>
-                        )}
+                                <Mail size={20} />
+                                <span>Send via Email</span>
+                            </button>
+                        </div>
                         <button
                             onClick={onRetry}
-                            className="px-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors"
+                            className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2"
                         >
-                            <RefreshCw size={20} />
+                            <RefreshCw size={18} />
+                            Start Over
                         </button>
                     </div>
                 </div>

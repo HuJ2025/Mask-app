@@ -1,19 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Settings, Key, Type } from 'lucide-react';
+import { X, Plus, Trash2, Save, Settings, Key, Type, Mail, Folder } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface EmailSettings {
+    smtp_server: string;
+    smtp_port: number;
+    sender_email: string;
+    sender_password: string;
+    default_recipient: string;
+}
+
+interface GeneralSettings {
+    save_path: string;
+}
 
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (words: string[], passwords: string[]) => Promise<void>;
+    onSave: (words: string[], passwords: string[], emailSettings: EmailSettings, generalSettings: GeneralSettings) => Promise<void>;
     initialWords: string[];
     initialPasswords: string[];
+    initialEmailSettings?: EmailSettings;
+    initialGeneralSettings?: GeneralSettings;
 }
 
-export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPasswords }: SettingsModalProps) {
-    const [activeTab, setActiveTab] = useState<'words' | 'passwords'>('words');
+export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPasswords, initialEmailSettings, initialGeneralSettings }: SettingsModalProps) {
+    const [activeTab, setActiveTab] = useState<'general' | 'words' | 'passwords' | 'email'>('general');
     const [words, setWords] = useState<string[]>([]);
     const [passwords, setPasswords] = useState<string[]>([]);
+    const [emailSettings, setEmailSettings] = useState<EmailSettings>({
+        smtp_server: '',
+        smtp_port: 587,
+        sender_email: '',
+        sender_password: '',
+        default_recipient: ''
+    });
+    const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
+        save_path: 'DEBUG: Fail to load save path'
+    });
     const [newWord, setNewWord] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [saving, setSaving] = useState(false);
@@ -22,8 +46,18 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
         if (isOpen) {
             setWords(initialWords);
             setPasswords(initialPasswords);
+            if (initialEmailSettings) {
+                setEmailSettings(initialEmailSettings);
+            }
+            if (initialGeneralSettings) {
+                setGeneralSettings(initialGeneralSettings);
+            }
+            console.log("SettingsModal: initialWords", initialWords);
+            console.log("SettingsModal: initialPasswords", initialPasswords);
+            console.log("SettingsModal: initialEmailSettings", initialEmailSettings);
+            console.log("SettingsModal: initialGeneralSettings", initialGeneralSettings);
         }
-    }, [isOpen, initialWords, initialPasswords]);
+    }, [isOpen, initialWords, initialPasswords, initialEmailSettings, initialGeneralSettings]);
 
     const handleAddWord = (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,7 +77,7 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
 
     const handleSave = async () => {
         setSaving(true);
-        await onSave(words, passwords);
+        await onSave(words, passwords, emailSettings, generalSettings);
         setSaving(false);
         onClose();
     };
@@ -78,10 +112,20 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
                     {/* Tabs */}
                     <div className="flex border-b border-slate-800">
                         <button
+                            onClick={() => setActiveTab('general')}
+                            className={`flex-1 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'general'
+                                ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-500/5'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                }`}
+                        >
+                            <Folder className="w-4 h-4" />
+                            General
+                        </button>
+                        <button
                             onClick={() => setActiveTab('words')}
                             className={`flex-1 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'words'
-                                    ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-500/5'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-500/5'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                                 }`}
                         >
                             <Type className="w-4 h-4" />
@@ -90,12 +134,22 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
                         <button
                             onClick={() => setActiveTab('passwords')}
                             className={`flex-1 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'passwords'
-                                    ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-500/5'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-500/5'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                                 }`}
                         >
                             <Key className="w-4 h-4" />
                             Saved Passwords
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('email')}
+                            className={`flex-1 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'email'
+                                ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-500/5'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                }`}
+                        >
+                            <Mail className="w-4 h-4" />
+                            Email
                         </button>
                     </div>
 
@@ -148,7 +202,7 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
                                     )}
                                 </div>
                             </div>
-                        ) : (
+                        ) : activeTab === 'passwords' ? (
                             <div className="space-y-6">
                                 <p className="text-sm text-slate-400">
                                     These passwords will be tried automatically when you upload an encrypted PDF.
@@ -156,7 +210,7 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
 
                                 <form onSubmit={handleAddPassword} className="flex gap-2">
                                     <input
-                                        type="text" // Show password for easier management? Or password type? Let's use text for now as it's a config manager.
+                                        type="text"
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
                                         placeholder="Add a password..."
@@ -193,6 +247,87 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
                                             </div>
                                         ))
                                     )}
+                                </div>
+                            </div>
+                        ) : activeTab === 'email' ? (
+                            <div className="space-y-6">
+                                <p className="text-sm text-slate-400">
+                                    Configure your email settings for sending processed files.
+                                </p>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-300">SMTP Server</label>
+                                            <input
+                                                type="text"
+                                                value={emailSettings.smtp_server}
+                                                onChange={(e) => setEmailSettings({ ...emailSettings, smtp_server: e.target.value })}
+                                                placeholder="smtp.example.com"
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-300">SMTP Port</label>
+                                            <input
+                                                type="number"
+                                                value={emailSettings.smtp_port}
+                                                onChange={(e) => setEmailSettings({ ...emailSettings, smtp_port: parseInt(e.target.value) || 0 })}
+                                                placeholder="587"
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-300">Sender Email</label>
+                                        <input
+                                            type="email"
+                                            value={emailSettings.sender_email}
+                                            onChange={(e) => setEmailSettings({ ...emailSettings, sender_email: e.target.value })}
+                                            placeholder="you@example.com"
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-300">Sender Password</label>
+                                        <input
+                                            type="password"
+                                            value={emailSettings.sender_password}
+                                            onChange={(e) => setEmailSettings({ ...emailSettings, sender_password: e.target.value })}
+                                            placeholder="App password or email password"
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-300">Default Recipient</label>
+                                        <input
+                                            type="email"
+                                            value={emailSettings.default_recipient}
+                                            onChange={(e) => setEmailSettings({ ...emailSettings, default_recipient: e.target.value })}
+                                            placeholder="recipient@example.com"
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <p className="text-sm text-slate-400">
+                                    Configure general application settings.
+                                </p>
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-300">Default Save Path</label>
+                                        <input
+                                            type="text"
+                                            value={generalSettings.save_path}
+                                            onChange={(e) => setGeneralSettings({ ...generalSettings, save_path: e.target.value })}
+                                            placeholder="/path/to/save/folder"
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            Processed files will be saved here. A timestamped subfolder will be created for each batch.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         )}
