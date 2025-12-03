@@ -8,6 +8,7 @@ backend_dist/
 .DS_Store
 .env
 reference/
+test/
 *.dmg
 *.app
 .idea/
