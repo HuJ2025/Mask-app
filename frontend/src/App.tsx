@@ -310,6 +310,10 @@ function App() {
           outputFilename: data.filename
         } : f));
 
+        if (files.length === 1) {
+          setDownloadUrl(`${API_URL}/api/download?temp_dir=${encodeURIComponent(data.temp_dir)}&filename=${encodeURIComponent(data.filename)}`);
+        }
+
       } catch (e) {
         console.error(e);
         setFiles(prev => prev.map(f => f.id === fileItem.id ? { ...f, status: 'error', error: 'Failed' } : f));
@@ -319,14 +323,6 @@ function App() {
     setGlobalStatus('done');
     setMessage('All files processed.');
     setBatchProgress('');
-
-    // If single file, set download URL for convenience
-    if (files.length === 1 && files[0].status === 'done') {
-      const f = files[0];
-      if (f.tempDir && f.outputFilename) {
-        setDownloadUrl(`${API_URL}/api/download?temp_dir=${encodeURIComponent(f.tempDir)}&filename=${encodeURIComponent(f.outputFilename)}`);
-      }
-    }
   };
 
   const handleBatchOutput = async () => {
