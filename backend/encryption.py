@@ -64,3 +64,15 @@ def decrypt_pdf(input_path: str, output_path: str, password: str) -> bool:
     except Exception as e:
         print(f"Decryption failed: {e}")
         return False
+
+def verify_password(input_path: str, password: str) -> bool:
+    """
+    Verifies if a password is correct for the given PDF.
+    Returns True if correct, False otherwise.
+    """
+    try:
+        with pikepdf.open(input_path, password=password) as pdf:
+            pass
+        return True
+    except:
+        return False

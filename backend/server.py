@@ -9,13 +9,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 
 from pdf_ops import process_pdf
-from encryption import check_encryption, decrypt_pdf
+from encryption import check_encryption, decrypt_pdf, verify_password
 from websocket import ConnectionManager
 from utils import cleanup_temp
+from config import Config
+from pydantic import BaseModel
+from typing import List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize Config
+config = Config()
 
 # We need a global reference to the main loop to schedule coroutines from threads
 main_loop = None
@@ -61,9 +67,22 @@ import threading
 # Store cancellation events: client_id -> threading.Event
 cancellation_events: dict[str, threading.Event] = {}
 
+class ConfigModel(BaseModel):
+    words: List[str]
+    passwords: List[str]
+
+@app.get("/api/config")
+async def get_config():
+    return config.get_all()
+
+@app.post("/api/config")
+async def update_config(new_config: ConfigModel):
+    config.set_words(new_config.words)
+    config.set_passwords(new_config.passwords)
+    return {"status": "ok"}
+
 @app.post("/api/redact")
-async def redact_endpoint(
-    background_tasks: BackgroundTasks,
+def redact_endpoint(
     file: UploadFile = File(...),
     words: str = Form(...),
     client_id: str = Form(...)
@@ -82,53 +101,55 @@ async def redact_endpoint(
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    # Run in threadpool
-    def processing_wrapper():
-        def progress_wrapper(*args):
-            try:
-                if len(args) == 2:
-                    pct, msg = args
-                elif len(args) == 3:
-                    _, pct, msg = args
-                else:
-                    return
-                
-                thread_safe_callback(client_id, pct, msg)
-            except Exception as e:
-                logger.error(f"Error in progress_wrapper: {e}")
-
-        def check_cancel():
-            return cancel_event.is_set()
-
+    # Progress wrapper
+    def progress_wrapper(*args):
         try:
-            process_pdf(
-                input_path, 
-                output_path, 
-                literals, 
-                progress_callback=progress_wrapper,
-                check_cancel=check_cancel
-            )
-        except Exception as e:
-            if str(e) == "Cancelled":
-                logger.info(f"Task cancelled for {client_id}")
-                thread_safe_callback(client_id, 0, "Cancelled")
+            if len(args) == 2:
+                pct, msg = args
+            elif len(args) == 3:
+                _, pct, msg = args
             else:
-                logger.error(f"Error processing PDF: {e}")
-                thread_safe_callback(client_id, 0, f"Error: {str(e)}")
-        finally:
-            # Cleanup cancellation event
-            if client_id in cancellation_events:
-                del cancellation_events[client_id]
+                return
             
-            # If cancelled, cleanup temp dir immediately? 
-            # Or rely on user to not call download?
-            # Better to cleanup if cancelled.
-            if cancel_event.is_set():
-                cleanup_temp(temp_dir)
+            thread_safe_callback(client_id, pct, msg)
+        except Exception as e:
+            logger.error(f"Error in progress_wrapper: {e}")
+
+    def check_cancel():
+        return cancel_event.is_set()
+
+    try:
+        # Run synchronously (in threadpool via FastAPI since it's a def)
+        logger.info(f"Starting synchronous processing for {file.filename}")
+        process_pdf(
+            input_path, 
+            output_path, 
+            literals, 
+            progress_callback=progress_wrapper,
+            check_cancel=check_cancel
+        )
         
-    background_tasks.add_task(processing_wrapper)
-    
-    return {"status": "processing", "temp_dir": temp_dir, "filename": f"redacted_{file.filename}"}
+        if not os.path.exists(output_path):
+            raise Exception("Output file was not created")
+            
+        logger.info(f"Processing complete for {file.filename}, output at {output_path}")
+        return {"status": "done", "temp_dir": temp_dir, "filename": f"redacted_{file.filename}"}
+    except Exception as e:
+        if str(e) == "Cancelled":
+            logger.info(f"Task cancelled for {client_id}")
+            thread_safe_callback(client_id, 0, "Cancelled")
+            # Cleanup if cancelled
+            cleanup_temp(temp_dir)
+            return JSONResponse(status_code=400, content={"error": "Cancelled"})
+        else:
+            logger.error(f"Error processing PDF: {e}")
+            thread_safe_callback(client_id, 0, f"Error: {str(e)}")
+            cleanup_temp(temp_dir)
+            return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        # Cleanup cancellation event
+        if client_id in cancellation_events:
+            del cancellation_events[client_id]
 
 @app.post("/api/cancel")
 async def cancel_endpoint(client_id: str = Form(...)):
@@ -153,7 +174,22 @@ async def check_encryption_endpoint(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
         
         is_encrypted = check_encryption(input_path)
-        return {"encrypted": is_encrypted}
+        
+        auto_password = None
+        if is_encrypted:
+            # Try passwords from config
+            saved_passwords = config.get_passwords()
+            logger.info(f"Checking {len(saved_passwords)} saved passwords for {file.filename}")
+            for pwd in saved_passwords:
+                if verify_password(input_path, pwd):
+                    logger.info(f"Found matching password for {file.filename}")
+                    auto_password = pwd
+                    break
+            
+            if not auto_password:
+                logger.info(f"No matching password found for {file.filename}")
+        
+        return {"encrypted": is_encrypted, "auto_password": auto_password}
     finally:
         shutil.rmtree(temp_dir)
 
@@ -181,6 +217,42 @@ async def decrypt_endpoint(background_tasks: BackgroundTasks, file: UploadFile =
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+class BatchFile(BaseModel):
+    temp_dir: str
+    filename: str
+
+@app.post("/api/batch_zip")
+async def batch_zip_endpoint(files: List[BatchFile], background_tasks: BackgroundTasks):
+    import zipfile
+    
+    zip_path = tempfile.mktemp(suffix='.zip')
+    
+    try:
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            seen_names = {}
+            for f in files:
+                file_path = os.path.join(f.temp_dir, f.filename)
+                if os.path.exists(file_path):
+                    # Handle duplicate names
+                    arcname = f.filename
+                    if arcname in seen_names:
+                        seen_names[arcname] += 1
+                        name, ext = os.path.splitext(arcname)
+                        arcname = f"{name}_{seen_names[arcname]}{ext}"
+                    else:
+                        seen_names[arcname] = 0
+                        
+                    zipf.write(file_path, arcname=arcname)
+                else:
+                    logger.warning(f"File not found for zip: {file_path}")
+                    
+        background_tasks.add_task(cleanup_temp, zip_path)
+        return FileResponse(zip_path, filename="redacted_batch.zip")
+    except Exception as e:
+        logger.error(f"Error creating zip: {e}")
+        cleanup_temp(zip_path)
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,33 +1,70 @@
 import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, FileText } from 'lucide-react';
+import { Upload, X, FileText, Folder } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FileUploadProps {
-    file: File | null;
-    onFileSelect: (file: File) => void;
-    onClearFile: () => void;
+    files: File[];
+    onFilesSelect: (files: File[]) => void;
+    onClearFiles: () => void;
     disabled?: boolean;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ file, onFileSelect, onClearFile, disabled }) => {
-    const onDrop = useCallback((acceptedFiles: File[]) => {
-        if (acceptedFiles.length > 0) {
-            onFileSelect(acceptedFiles[0]);
+// Helper to traverse directories
+async function getFilesFromEntry(entry: any): Promise<File[]> {
+    if (entry.isFile) {
+        return new Promise((resolve) => {
+            entry.file((file: File) => resolve([file]));
+        });
+    } else if (entry.isDirectory) {
+        const dirReader = entry.createReader();
+        const entries = await new Promise<any[]>((resolve) => {
+            dirReader.readEntries((entries: any[]) => resolve(entries));
+        });
+        const files = await Promise.all(entries.map(getFilesFromEntry));
+        return files.flat();
+    }
+    return [];
+}
+
+export const FileUpload: React.FC<FileUploadProps> = ({ files, onFilesSelect, onClearFiles, disabled }) => {
+    const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: any[], event: any) => {
+        // Handle folder drop via DataTransferItem API if available
+        if (event.dataTransfer && event.dataTransfer.items) {
+            const items = Array.from(event.dataTransfer.items);
+            const entries = items
+                .map((item: any) => item.webkitGetAsEntry ? item.webkitGetAsEntry() : null)
+                .filter(Boolean);
+
+            if (entries.length > 0) {
+                const allFiles = await Promise.all(entries.map(getFilesFromEntry));
+                const flatFiles = allFiles.flat().filter(f => f.name.toLowerCase().endsWith('.pdf'));
+                if (flatFiles.length > 0) {
+                    onFilesSelect(flatFiles);
+                    return;
+                }
+            }
         }
-    }, [onFileSelect]);
+
+        // Fallback or standard file drop
+        if (acceptedFiles.length > 0) {
+            onFilesSelect(acceptedFiles);
+        }
+    }, [onFilesSelect]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: { 'application/pdf': ['.pdf'] },
-        multiple: false,
-        disabled: disabled
+        multiple: true, // Enable multiple files
+        disabled: disabled,
+        noClick: false,
+        noKeyboard: false
     });
 
     return (
         <div className="h-[200px]">
             <AnimatePresence mode="wait">
-                {!file ? (
+                {files.length === 0 ? (
                     <motion.div
                         key="dropzone"
                         initial={{ opacity: 0, y: 10 }}
@@ -48,7 +85,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ file, onFileSelect, onCl
                                 <Upload className={`w-8 h-8 ${isDragActive ? 'text-indigo-400' : 'text-slate-400'}`} />
                             </div>
                             <p className="text-lg font-medium text-slate-300">
-                                {isDragActive ? "Drop it like it's hot!" : "Drop PDF Here"}
+                                {isDragActive ? "Drop files or folders!" : "Drop PDF or Folder Here"}
                             </p>
                             <p className="text-sm text-slate-500 mt-2">or click to browse</p>
                         </div>
@@ -65,7 +102,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ file, onFileSelect, onCl
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    onClearFile();
+                                    onClearFiles();
                                 }}
                                 className="absolute top-4 right-4 p-2 bg-slate-700 hover:bg-red-500/20 hover:text-red-400 rounded-xl transition-colors"
                             >
@@ -74,13 +111,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({ file, onFileSelect, onCl
                         )}
 
                         <div className="w-20 h-20 bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-4">
-                            <FileText size={40} className="text-indigo-400" />
+                            {files.length > 1 ? (
+                                <Folder size={40} className="text-indigo-400" />
+                            ) : (
+                                <FileText size={40} className="text-indigo-400" />
+                            )}
                         </div>
                         <p className="text-lg font-medium text-slate-200 text-center max-w-[200px] truncate">
-                            {file.name}
+                            {files.length === 1 ? files[0].name : `${files.length} PDF files selected`}
                         </p>
                         <p className="text-sm text-slate-500 mt-1">
-                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                            {files.length === 1
+                                ? `${(files[0].size / 1024 / 1024).toFixed(2)} MB`
+                                : `Total ${(files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB`
+                            }
                         </p>
                     </motion.div>
                 )}

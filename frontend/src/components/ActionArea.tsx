@@ -6,24 +6,28 @@ interface ActionAreaProps {
     status: 'idle' | 'uploading' | 'processing' | 'done' | 'error' | 'cancelling';
     progress: number;
     message: string;
-    downloadUrl: string;
+    batchProgress?: string;
+    downloadUrl?: string;
     canStart: boolean;
     onStart: () => void;
     onDownload: () => void;
     onRetry: () => void;
     onCancel: () => void;
+    isBatch?: boolean;
 }
 
 export const ActionArea: React.FC<ActionAreaProps> = ({
     status,
     progress,
     message,
+    batchProgress,
     downloadUrl,
     canStart,
     onStart,
     onDownload,
     onRetry,
-    onCancel
+    onCancel,
+    isBatch = false
 }) => {
     return (
         <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
@@ -40,6 +44,11 @@ export const ActionArea: React.FC<ActionAreaProps> = ({
 
             {(status === 'uploading' || status === 'processing' || status === 'cancelling') && (
                 <div className="space-y-4">
+                    {batchProgress && (
+                        <div className="text-indigo-400 font-medium text-center mb-2">
+                            {batchProgress}
+                        </div>
+                    )}
                     <div className="flex justify-between text-sm text-slate-400 mb-2">
                         <span>{message}</span>
                         <span>{progress}%</span>
@@ -67,18 +76,28 @@ export const ActionArea: React.FC<ActionAreaProps> = ({
             {status === 'done' && (
                 <div className="space-y-4">
                     <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-4 rounded-xl text-center font-medium">
-                        Redaction Complete!
+                        {isBatch ? "Batch Processing Complete!" : "Redaction Complete!"}
                     </div>
                     <div className="flex gap-4">
-                        <a
-                            href={downloadUrl}
-                            download
-                            onClick={onDownload}
-                            className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
-                        >
-                            <Download size={20} />
-                            Download PDF
-                        </a>
+                        {isBatch ? (
+                            <button
+                                onClick={onDownload}
+                                className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                            >
+                                <Download size={20} />
+                                Download All (ZIP)
+                            </button>
+                        ) : (
+                            <a
+                                href={downloadUrl}
+                                download
+                                onClick={onDownload}
+                                className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                            >
+                                <Download size={20} />
+                                Download PDF
+                            </a>
+                        )}
                         <button
                             onClick={onRetry}
                             className="px-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors"

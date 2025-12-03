@@ -1,23 +1,78 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Settings } from 'lucide-react';
 import { TitleBar } from './components/TitleBar';
 import { FileUpload } from './components/FileUpload';
 import { WordList } from './components/WordList';
 import { ActionArea } from './components/ActionArea';
 import { PDFPreview } from './components/PDFPreview';
 import { PasswordModal } from './components/PasswordModal';
+import { SettingsModal } from './components/SettingsModal';
 
 const API_URL = 'http://localhost:8000';
 const WS_URL = 'ws://localhost:8000';
 
+interface FileItem {
+  id: string;
+  file: File;
+  status: 'pending' | 'encrypted' | 'decrypted' | 'uploading' | 'processing' | 'done' | 'error';
+  password?: string;
+  tempDir?: string;
+  outputFilename?: string;
+  error?: string;
+}
+
 function App() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
   const [words, setWords] = useState<string[]>([]);
-  const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error' | 'cancelling'>('idle');
+  const [globalStatus, setGlobalStatus] = useState<'idle' | 'processing' | 'done' | 'cancelling'>('idle');
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
-  const [downloadUrl, setDownloadUrl] = useState('');
+  const [downloadUrl, setDownloadUrl] = useState(''); // For single file
   const [clientId] = useState(() => Math.random().toString(36).substring(7));
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Config State
+  const [showSettings, setShowSettings] = useState(false);
+  const [configWords, setConfigWords] = useState<string[]>([]);
+  const [configPasswords, setConfigPasswords] = useState<string[]>([]);
+
+  // Load config on mount
+  useEffect(() => {
+    fetch(`${API_URL}/api/config`)
+      .then(res => res.json())
+      .then(data => {
+        setConfigWords(data.words || []);
+        setConfigPasswords(data.passwords || []);
+        // Initialize words with default config if empty
+        if (data.words && data.words.length > 0) {
+          setWords(data.words);
+        }
+      })
+      .catch(err => console.error("Error loading config:", err));
+  }, []);
+
+  const handleSaveConfig = async (newWords: string[], newPasswords: string[]) => {
+    try {
+      await fetch(`${API_URL}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ words: newWords, passwords: newPasswords })
+      });
+      setConfigWords(newWords);
+      setConfigPasswords(newPasswords);
+
+      // Update current words: add new defaults
+      setWords(prev => {
+        const uniqueWords = new Set([...prev, ...newWords]);
+        return Array.from(uniqueWords);
+      });
+
+    } catch (e) {
+      console.error("Error saving config:", e);
+      alert("Failed to save settings");
+    }
+  };
 
   // Focus state for TitleBar
   const [isFocused, setIsFocused] = useState(true);
@@ -32,7 +87,6 @@ function App() {
     };
   }, []);
 
-  // WebSocket Connection
   // WebSocket Connection
   useEffect(() => {
     let ws: WebSocket;
@@ -49,7 +103,7 @@ function App() {
         const data = JSON.parse(event.data);
 
         if (data.message === "Cancelled") {
-          setStatus('idle');
+          setGlobalStatus('idle');
           setProgress(0);
           setMessage('');
           return;
@@ -58,11 +112,8 @@ function App() {
         setProgress(data.percentage);
         setMessage(data.message);
 
-        if (data.message && data.message.startsWith("Error:")) {
-          setStatus('error');
-        } else if (data.percentage === 100) {
-          setStatus('done');
-        }
+        // Note: Individual file status updates might be better handled via specific messages
+        // For now, we use global progress
       };
 
       ws.onclose = () => {
@@ -82,7 +133,7 @@ function App() {
 
     return () => {
       if (ws) {
-        ws.onclose = null; // Prevent reconnect on unmount
+        ws.onclose = null;
         ws.close();
       }
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
@@ -92,10 +143,11 @@ function App() {
   // Password Protection State
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [passwordDescription, setPasswordDescription] = useState<string | undefined>(undefined);
+  const [pendingFileId, setPendingFileId] = useState<string | null>(null);
   const [decrypting, setDecrypting] = useState(false);
 
-  const checkEncryption = async (file: File) => {
+  const checkEncryption = async (file: File, id: string) => {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -107,28 +159,66 @@ function App() {
       const data = await res.json();
 
       if (data.encrypted) {
-        setPendingFile(file);
-        setPasswordError(null);
-        setShowPasswordModal(true);
+        if (data.auto_password) {
+          console.log(`Auto-decrypting ${file.name} with saved password...`);
+          await handleDecryptSubmit(data.auto_password, id, file);
+        } else {
+          setFiles(prev => prev.map(f => f.id === id ? { ...f, status: 'encrypted' } : f));
+          // If this is the first encrypted file found, prompt immediately? 
+          // Or wait until user clicks? Let's prompt immediately for better UX.
+          if (!showPasswordModal && !pendingFileId) {
+            setPendingFileId(id);
+            setPasswordError(null);
+            setPasswordDescription("This document is password protected, and no matching password was found in your saved settings.");
+            setShowPasswordModal(true);
+          }
+        }
       } else {
-        setFile(file);
-        setStatus('idle');
-        setProgress(0);
-        setMessage('');
+        setFiles(prev => prev.map(f => f.id === id ? { ...f, status: 'pending' } : f));
       }
     } catch (e) {
       console.error(e);
-      alert("Error checking file encryption");
+      setFiles(prev => prev.map(f => f.id === id ? { ...f, status: 'error', error: 'Check failed' } : f));
     }
   };
 
-  const handleDecryptSubmit = async (password: string) => {
-    if (!pendingFile) return;
+  const handleFilesSelect = async (newFiles: File[]) => {
+    const newFileItems: FileItem[] = newFiles.map(f => ({
+      id: Math.random().toString(36).substring(7),
+      file: f,
+      status: 'pending'
+    }));
+
+    setFiles(prev => [...prev, ...newFileItems]);
+    setGlobalStatus('idle');
+    setProgress(0);
+    setMessage('');
+    setDownloadUrl('');
+
+    // Reset words to config defaults if list is empty
+    if (words.length === 0 && configWords.length > 0) {
+      setWords(configWords);
+    }
+
+    // Check encryption for all new files
+    for (const item of newFileItems) {
+      await checkEncryption(item.file, item.id);
+    }
+  };
+
+  const handleDecryptSubmit = async (password: string, idOverride?: string, fileOverride?: File) => {
+    const id = idOverride || pendingFileId;
+    if (!id) return;
+
+    const fileItem = files.find(f => f.id === id);
+    const fileToDecrypt = fileOverride || fileItem?.file;
+
+    if (!fileToDecrypt) return;
 
     setDecrypting(true);
     setPasswordError(null);
     const formData = new FormData();
-    formData.append('file', pendingFile);
+    formData.append('file', fileToDecrypt);
     formData.append('password', password);
 
     try {
@@ -139,75 +229,178 @@ function App() {
 
       if (!res.ok) {
         const err = await res.json();
-        setPasswordError(err.error || 'Decryption failed');
+        if (!idOverride) { // Only show error in modal if it's a manual attempt
+          setPasswordError(err.error || 'Decryption failed');
+        }
         return;
       }
 
       const blob = await res.blob();
-      const decryptedFile = new File([blob], pendingFile.name, { type: 'application/pdf' });
+      const decryptedFile = new File([blob], fileToDecrypt.name, { type: 'application/pdf' });
 
-      setFile(decryptedFile);
-      setShowPasswordModal(false);
-      setPendingFile(null);
-      setPasswordError(null);
-      setStatus('idle');
-      setProgress(0);
-      setMessage('');
+      setFiles(prev => prev.map(f => f.id === id ? { ...f, file: decryptedFile, status: 'decrypted', password } : f));
+
+      if (!idOverride) {
+        setShowPasswordModal(false);
+        setPendingFileId(null);
+        setPasswordError(null);
+        setPasswordDescription(undefined);
+
+        // Check if there are other encrypted files pending
+        const nextEncrypted = files.find(f => f.status === 'encrypted' && f.id !== id);
+        if (nextEncrypted) {
+          setTimeout(() => {
+            setPendingFileId(nextEncrypted.id);
+            setPasswordDescription("This document is password protected, and no matching password was found in your saved settings.");
+            setShowPasswordModal(true);
+          }, 300);
+        }
+      }
+
     } catch (e: any) {
-      setPasswordError(e.message || "Incorrect password or decryption error");
+      if (!idOverride) {
+        setPasswordError(e.message || "Incorrect password or decryption error");
+      }
     } finally {
       setDecrypting(false);
     }
   };
 
+  const [batchProgress, setBatchProgress] = useState('');
+
   const handleRedact = async () => {
-    if (!file || words.length === 0) return;
+    if (files.length === 0 || words.length === 0) return;
 
-    setStatus('uploading');
-    setMessage('Uploading file...');
+    setGlobalStatus('processing');
+    setMessage('Starting batch processing...');
+    setBatchProgress('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('words', words.join(','));
-    formData.append('client_id', clientId);
+    // Process sequentially
+    for (let i = 0; i < files.length; i++) {
+      const fileItem = files[i];
+      if (fileItem.status === 'error') continue;
 
+      setFiles(prev => prev.map(f => f.id === fileItem.id ? { ...f, status: 'uploading' } : f));
+
+      // Update batch progress string
+      const batchMsg = `Processing file ${i + 1} of ${files.length}: ${fileItem.file.name}`;
+      setBatchProgress(batchMsg);
+      setMessage('Initializing...'); // Reset message for new file
+
+      const formData = new FormData();
+      formData.append('file', fileItem.file);
+      formData.append('words', words.join(','));
+      formData.append('client_id', clientId);
+
+      try {
+        // This fetch is now synchronous on the backend (waits for completion)
+        const res = await fetch(`${API_URL}/api/redact`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) throw new Error('Processing failed');
+
+        const data = await res.json();
+
+        setFiles(prev => prev.map(f => f.id === fileItem.id ? {
+          ...f,
+          status: 'done',
+          tempDir: data.temp_dir,
+          outputFilename: data.filename
+        } : f));
+
+      } catch (e) {
+        console.error(e);
+        setFiles(prev => prev.map(f => f.id === fileItem.id ? { ...f, status: 'error', error: 'Failed' } : f));
+      }
+    }
+
+    setGlobalStatus('done');
+    setMessage('All files processed.');
+    setBatchProgress('');
+
+    // If single file, set download URL for convenience
+    if (files.length === 1 && files[0].status === 'done') {
+      const f = files[0];
+      if (f.tempDir && f.outputFilename) {
+        setDownloadUrl(`${API_URL}/api/download?temp_dir=${encodeURIComponent(f.tempDir)}&filename=${encodeURIComponent(f.outputFilename)}`);
+      }
+    }
+  };
+
+  const handleBatchOutput = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/redact`, {
+      const filesToZip = files
+        .filter(f => f.status === 'done' && f.tempDir && f.outputFilename)
+        .map(f => ({
+          temp_dir: f.tempDir,
+          filename: f.outputFilename
+        }));
+
+      if (filesToZip.length === 0) {
+        alert("No processed files to download.");
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/api/batch_zip`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filesToZip)
       });
 
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) throw new Error('Failed to create ZIP');
 
-      const data = await res.json();
-      setStatus('processing');
-      setMessage('Processing...');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "redacted_batch.zip";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
 
-      setDownloadUrl(`${API_URL}/api/download?temp_dir=${encodeURIComponent(data.temp_dir)}&filename=${encodeURIComponent(data.filename)}`);
+      // Reset
+      setTimeout(() => {
+        setFiles([]);
+        setWords(configWords);
+        setGlobalStatus('idle');
+        setProgress(0);
+        setMessage('');
+        setBatchProgress('');
+        setDownloadUrl('');
+      }, 1000);
 
-    } catch (e) {
-      console.error(e);
-      setStatus('error');
-      setMessage('Error starting redaction.');
+    } catch (e: any) {
+      console.error("Error saving batch:", e);
+      alert(`Failed to download files: ${e.message || e}`);
     }
   };
 
   const handleDownloadClick = () => {
-    setTimeout(() => {
-      setFile(null);
-      setWords([]);
-      setStatus('idle');
-      setProgress(0);
-      setMessage('');
-      setDownloadUrl('');
-    }, 1000);
+    if (files.length > 1) {
+      handleBatchOutput();
+    } else {
+      // Single file download handled by ActionArea link, just reset state after delay
+      setTimeout(() => {
+        setFiles([]);
+        setWords(configWords);
+        setGlobalStatus('idle');
+        setProgress(0);
+        setMessage('');
+        setBatchProgress('');
+        setDownloadUrl('');
+      }, 1000);
+    }
   };
 
   const handleCancel = async () => {
-    if (status !== 'processing' && status !== 'uploading') return;
+    if (globalStatus !== 'processing') return;
 
-    setStatus('cancelling');
+    setGlobalStatus('cancelling');
     setMessage('Cancelling...');
+    setBatchProgress('');
 
     const formData = new FormData();
     formData.append('client_id', clientId);
@@ -217,50 +410,59 @@ function App() {
         method: 'POST',
         body: formData
       });
-      // Wait for WebSocket "Cancelled" message to reset state
     } catch (e) {
       console.error("Error cancelling:", e);
-      // If API fails, maybe just reset?
-      setStatus('idle');
+      setGlobalStatus('idle');
     }
   };
 
+  const currentFile = files[previewIndex];
   const fileUrl = React.useMemo(() => {
-    if (file) return URL.createObjectURL(file);
+    if (currentFile?.file) return URL.createObjectURL(currentFile.file);
     return '';
-  }, [file]);
+  }, [currentFile]);
 
-  const isLocked = status === 'uploading' || status === 'processing' || status === 'cancelling';
+  const isLocked = globalStatus === 'processing' || globalStatus === 'cancelling';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/30 pt-10">
       <TitleBar isFocused={isFocused} />
 
       <div className="max-w-7xl mx-auto p-8">
-        <header className="mb-12 text-center">
+        <header className="mb-12 text-center relative">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent mb-2">
             PDF Mask
           </h1>
           <p className="text-slate-400">Securely redact sensitive information from your PDFs.</p>
+
+          <button
+            onClick={() => setShowSettings(true)}
+            className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-900 rounded-xl transition-all"
+            title="Settings"
+          >
+            <Settings className="w-6 h-6" />
+          </button>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
           <div className="space-y-8">
             <FileUpload
-              file={file}
-              onFileSelect={checkEncryption}
-              onClearFile={() => {
-                setFile(null);
-                setWords([]);
-                setStatus('idle');
+              files={files.map(f => f.file)}
+              onFilesSelect={handleFilesSelect}
+              onClearFiles={() => {
+                setFiles([]);
+                setWords(configWords);
+                setGlobalStatus('idle');
                 setProgress(0);
                 setMessage('');
+                setBatchProgress('');
               }}
               disabled={isLocked}
             />
 
             <WordList
               words={words}
+              defaultWords={configWords}
               onAddWord={(word) => setWords([...words, word])}
               onRemoveWord={(index) => setWords(words.filter((_, i) => i !== index))}
               onClearWords={() => setWords([])}
@@ -268,31 +470,52 @@ function App() {
             />
 
             <ActionArea
-              status={status}
+              status={globalStatus === 'processing' ? 'processing' : globalStatus === 'done' ? 'done' : 'idle'} // Map to expected status
               progress={progress}
               message={message}
-              downloadUrl={downloadUrl}
-              canStart={!!file && words.length > 0}
+              batchProgress={batchProgress}
+              downloadUrl={files.length === 1 ? downloadUrl : undefined}
+              canStart={files.length > 0 && words.length > 0 && !files.some(f => f.status === 'encrypted')}
               onStart={handleRedact}
               onDownload={handleDownloadClick}
-              onRetry={() => setStatus('idle')}
+              onRetry={() => setGlobalStatus('idle')}
               onCancel={handleCancel}
+              isBatch={files.length > 1}
             />
           </div>
 
-          <PDFPreview fileUrl={fileUrl} hasFile={!!file} />
+          <PDFPreview
+            fileUrl={fileUrl}
+            hasFile={!!currentFile}
+            currentIndex={previewIndex}
+            totalFiles={files.length}
+            onPrev={() => setPreviewIndex(i => Math.max(0, i - 1))}
+            onNext={() => setPreviewIndex(i => Math.min(files.length - 1, i + 1))}
+            fileName={currentFile?.file.name}
+          />
         </div>
 
         <PasswordModal
           isOpen={showPasswordModal}
           onClose={() => {
             setShowPasswordModal(false);
-            setPendingFile(null);
+            setPendingFileId(null);
             setPasswordError(null);
+            setPasswordDescription(undefined);
           }}
-          onSubmit={handleDecryptSubmit}
+          onSubmit={(pwd) => handleDecryptSubmit(pwd)}
           isDecrypting={decrypting}
           error={passwordError}
+          description={passwordDescription}
+          filename={files.find(f => f.id === pendingFileId)?.file.name}
+        />
+
+        <SettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          onSave={handleSaveConfig}
+          initialWords={configWords}
+          initialPasswords={configPasswords}
         />
       </div>
     </div>

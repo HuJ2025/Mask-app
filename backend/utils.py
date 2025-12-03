@@ -12,11 +12,16 @@ logger = logging.getLogger(__name__)
 
 def cleanup_temp(path: str):
     try:
-        if os.path.exists(path):
+        if os.path.isfile(path):
             os.unlink(path)
-        parent = os.path.dirname(path)
-        if os.path.exists(parent):
-            shutil.rmtree(parent)
+            # Also try to remove the parent directory if it's a temp dir and empty
+            parent = os.path.dirname(path)
+            # Check if parent name starts with 'tmp' or looks like a temp dir to avoid deleting system dirs
+            # This is a heuristic. Better to only delete if we know we created it.
+            # For now, let's just delete the file. 
+            # If we want to delete the dir, we should pass the dir path.
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
     except Exception as e:
         logger.error(f"Error cleaning up {path}: {e}")
 

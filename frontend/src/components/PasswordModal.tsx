@@ -8,9 +8,11 @@ interface PasswordModalProps {
     onSubmit: (password: string) => void;
     isDecrypting: boolean;
     error: string | null;
+    description?: string;
+    filename?: string;
 }
 
-export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, onSubmit, isDecrypting, error }) => {
+export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, onSubmit, isDecrypting, error, description, filename }) => {
     const [password, setPassword] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -34,8 +36,13 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
                                 <Lock size={32} />
                             </div>
                             <h2 className="text-2xl font-bold text-white">Encrypted PDF</h2>
+                            {filename && (
+                                <p className="text-indigo-300 font-medium mt-1 mb-1 text-center break-all">
+                                    {filename}
+                                </p>
+                            )}
                             <p className="text-slate-400 text-center mt-2">
-                                This file is password protected. Please enter the password to continue.
+                                {description || "This file is password protected. Please enter the password to continue."}
                             </p>
                         </div>
 
@@ -47,8 +54,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose, o
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="Enter password"
                                     className={`w-full bg-slate-950 border rounded-xl px-4 py-3 focus:outline-none transition-colors text-white ${error
-                                            ? 'border-red-500 focus:border-red-500'
-                                            : 'border-slate-700 focus:border-indigo-500'
+                                        ? 'border-red-500 focus:border-red-500'
+                                        : 'border-slate-700 focus:border-indigo-500'
                                         }`}
                                     autoFocus
                                 />
