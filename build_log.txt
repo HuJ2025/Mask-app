@@ -1,0 +1,75 @@
+  • electron-builder  version=24.13.3 os=24.0.0
+  • loaded configuration  file=package.json ("build" field)
+  • packaging       platform=darwin arch=arm64 electron=28.3.3 appOutDir=dist/mac-arm64
+  • default Electron icon is used  reason=application icon is not set
+Error: Cannot find module '/Users/chengqicong/Developer/masking/build/electron-publisher-never.js'
+Require stack:
+- /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/publish/PublishManager.js
+- /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/index.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/out/builder.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/out/cli/cli.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/cli.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at requireProviderClass (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:348:18)
+    at getResolvedPublishConfig (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:513:25)
+    at /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:453:5
+    at tryCatcher (/Users/chengqicong/Developer/masking/node_modules/bluebird/js/release/util.js:16:23)
+    at MappingPromiseArray._promiseFulfilled (/Users/chengqicong/Developer/masking/node_modules/bluebird/js/release/map.js:68:38)
+    at MappingPromiseArray.PromiseArray._iterate (/Users/chengqicong/Developer/masking/node_modules/bluebird/js/release/promise_array.js:115:31)
+    at MappingPromiseArray.init (/Users/chengqicong/Developer/masking/node_modules/bluebird/js/release/promise_array.js:79:10)
+    at MappingPromiseArray._asyncInit (/Users/chengqicong/Developer/masking/node_modules/bluebird/js/release/map.js:37:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/publish/PublishManager.js',
+    '/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/index.js',
+    '/Users/chengqicong/Developer/masking/node_modules/electron-builder/out/builder.js',
+    '/Users/chengqicong/Developer/masking/node_modules/electron-builder/out/cli/cli.js',
+    '/Users/chengqicong/Developer/masking/node_modules/electron-builder/cli.js'
+  ]
+}
+  ⨯ Cannot find module 'electron-publisher-never'
+Require stack:
+- /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/publish/PublishManager.js
+- /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/index.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/out/builder.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/out/cli/cli.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/cli.js  failedTask=build stackTrace=Error: Cannot find module 'electron-publisher-never'
+Require stack:
+- /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/publish/PublishManager.js
+- /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/out/index.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/out/builder.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/out/cli/cli.js
+- /Users/chengqicong/Developer/masking/node_modules/electron-builder/cli.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at requireProviderClass (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:354:18)
+    at getResolvedPublishConfig (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:513:25)
+    at /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:453:5
+From previous event:
+    at processImmediate (node:internal/timers:485:21)
+From previous event:
+    at resolvePublishConfigurations (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:452:33)
+    at getPublishConfigs (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:417:16)
+    at getAppUpdatePublishConfiguration (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:249:79)
+    at /Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/publish/PublishManager.ts:118:35
+    at Packager.afterPack (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/packager.ts:546:29)
+    at MacPackager.doPack (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/platformPackager.ts:312:5)
+    at MacPackager.pack (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/macPackager.ts:198:9)
+    at Packager.doBuild (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/packager.ts:445:9)
+    at executeFinally (/Users/chengqicong/Developer/masking/node_modules/builder-util/src/promise.ts:12:14)
+    at Packager._build (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/packager.ts:379:31)
+    at Packager.build (/Users/chengqicong/Developer/masking/node_modules/app-builder-lib/src/packager.ts:340:12)
+    at executeFinally (/Users/chengqicong/Developer/masking/node_modules/builder-util/src/promise.ts:12:14)

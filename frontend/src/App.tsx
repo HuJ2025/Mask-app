@@ -29,7 +29,6 @@ function App() {
   const [globalStatus, setGlobalStatus] = useState<'idle' | 'processing' | 'done' | 'cancelling'>('idle');
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
-  const [downloadUrl, setDownloadUrl] = useState(''); // For single file
   const [clientId] = useState(() => Math.random().toString(36).substring(7));
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -211,7 +210,6 @@ function App() {
     setGlobalStatus('idle');
     setProgress(0);
     setMessage('');
-    setDownloadUrl('');
 
     // Reset words to config defaults if list is empty
     if (words.length === 0 && configWords.length > 0) {
@@ -339,9 +337,7 @@ function App() {
           outputFilename: data.filename
         } : f));
 
-        if (files.length === 1) {
-          setDownloadUrl(`${API_URL}/api/download?temp_dir=${encodeURIComponent(data.temp_dir)}&filename=${encodeURIComponent(data.filename)}`);
-        }
+
 
       } catch (e) {
         console.error(e);
@@ -358,73 +354,9 @@ function App() {
     setBatchProgress('');
   };
 
-  const handleBatchOutput = async () => {
-    try {
-      const filesToZip = files
-        .filter(f => f.status === 'done' && f.tempDir && f.outputFilename)
-        .map(f => ({
-          temp_dir: f.tempDir,
-          filename: f.outputFilename
-        }));
 
-      if (filesToZip.length === 0) {
-        alert("No processed files to download.");
-        return;
-      }
 
-      const res = await fetch(`${API_URL}/api/batch_zip`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filesToZip)
-      });
 
-      if (!res.ok) throw new Error('Failed to create ZIP');
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = "redacted_batch.zip";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      // Reset
-      setTimeout(() => {
-        setFiles([]);
-        setWords(configWords);
-        setGlobalStatus('idle');
-        setProgress(0);
-        setMessage('');
-        setBatchProgress('');
-        setDownloadUrl('');
-        setLastSaveDir(null);
-      }, 1000);
-
-    } catch (e: any) {
-      console.error("Error saving batch:", e);
-      alert(`Failed to download files: ${e.message || e}`);
-    }
-  };
-
-  const handleDownloadClick = () => {
-    if (files.length > 1) {
-      handleBatchOutput();
-    } else {
-      // Single file download handled by ActionArea link, just reset state after delay
-      setTimeout(() => {
-        setFiles([]);
-        setWords(configWords);
-        setGlobalStatus('idle');
-        setProgress(0);
-        setMessage('');
-        setBatchProgress('');
-        setDownloadUrl('');
-        setLastSaveDir(null);
-      }, 1000);
-    }
-  };
 
   const handleCancel = async () => {
     if (globalStatus !== 'processing') return;

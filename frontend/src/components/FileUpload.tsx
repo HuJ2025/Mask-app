@@ -28,7 +28,7 @@ async function getFilesFromEntry(entry: any): Promise<File[]> {
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ files, onFilesSelect, onClearFiles, disabled }) => {
-    const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: any[], event: any) => {
+    const onDrop = useCallback(async (acceptedFiles: File[], _fileRejections: any[], event: any) => {
         // Handle folder drop via DataTransferItem API if available
         if (event.dataTransfer && event.dataTransfer.items) {
             const items = Array.from(event.dataTransfer.items);
