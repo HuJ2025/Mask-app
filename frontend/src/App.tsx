@@ -404,16 +404,26 @@ function App() {
           recipient,
           subject,
           body,
-          attachment_path: lastSaveDir
+          attachment_path: lastSaveDir,
+          // Pass credentials if available (for DEBUG mode on backend)
+          smtp_server: configEmailSettings?.smtp_server,
+          smtp_port: configEmailSettings?.smtp_port,
+          sender_email: configEmailSettings?.sender_email,
+          sender_password: configEmailSettings?.sender_password
         })
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || 'Failed to open email client');
       }
 
-      alert('Email client opened! Please review and send the draft.');
+      if (data.status === 'sent') {
+        alert('Email sent successfully!');
+      } else if (data.status === 'opened') {
+        alert('Email client opened! Please review and send the draft.');
+      }
     } catch (e: any) {
       console.error("Error opening email client:", e);
       alert(`Failed to open email client: ${e.message}`);

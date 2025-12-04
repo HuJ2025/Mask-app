@@ -12,7 +12,7 @@ from pdf_ops import process_pdf
 from encryption import check_encryption, decrypt_pdf, verify_password
 from websocket import ConnectionManager
 from utils import cleanup_temp
-from config import Config
+from config import Config, DEFAULT_SAVE_PATH
 from email_ops import open_system_mail_client
 from pydantic import BaseModel
 from typing import List
@@ -116,7 +116,7 @@ def redact_endpoint(
     
     # Auto-save directory
     general_settings = config.get_general_settings()
-    save_base_path = general_settings.get("save_path", str(Path.home() / "PDFMask"))
+    save_base_path = general_settings.get("save_path", str(DEFAULT_SAVE_PATH))
     save_dir = save_base_path
     
     if batch_id:
@@ -305,7 +305,7 @@ async def open_folder_endpoint(request: OpenFolderRequest):
     import platform
     
     general_settings = config.get_general_settings()
-    default_path = general_settings.get("save_path", str(Path.home() / "PDFMask"))
+    default_path = general_settings.get("save_path", str(DEFAULT_SAVE_PATH))
     
     path = request.path if request.path else default_path
     
@@ -329,14 +329,53 @@ async def open_folder_endpoint(request: OpenFolderRequest):
         return JSONResponse(status_code=500, content={"error": str(e)})
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+from email_ops import open_system_mail_client, send_email_smtp
+from typing import Optional
+
+# ...
+
 class SendEmailRequest(BaseModel):
     recipient: str
     subject: str
     body: str
     attachment_path: str
+    # Optional fields for Debug/SMTP mode
+    smtp_server: Optional[str] = None
+    smtp_port: Optional[int] = None
+    sender_email: Optional[str] = None
+    sender_password: Optional[str] = None
 
 @app.post("/api/send_email")
 async def send_email_endpoint(request: SendEmailRequest, background_tasks: BackgroundTasks):
+    # Check for DEBUG mode or if credentials are provided explicitly to force SMTP
+    # User asked for "if (DEBUG): pass" structure.
+    # Let's assume DEBUG is an env var or we can default it to False.
+    DEBUG = True
+    
+    # If credentials are provided, we might want to use them regardless of DEBUG, 
+    # but let's follow the user's "if (DEBUG)" instruction strictly for the structure.
+    
+    if DEBUG:
+        if not (request.smtp_server and request.sender_email and request.sender_password):
+            return JSONResponse(status_code=400, content={"error": "SMTP credentials required in DEBUG mode"})
+            
+        try:
+            await asyncio.to_thread(
+                send_email_smtp,
+                request.recipient,
+                request.subject,
+                request.body,
+                request.attachment_path,
+                request.smtp_server,
+                request.smtp_port or 587,
+                request.sender_email,
+                request.sender_password
+            )
+            return {"status": "sent"}
+        except Exception as e:
+            logger.error(f"Error sending email via SMTP: {e}")
+            return JSONResponse(status_code=500, content={"error": str(e)})
+
     try:
         # Run in threadpool to avoid blocking
         await asyncio.to_thread(

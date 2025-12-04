@@ -6,7 +6,48 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = Path.home() / ".pdfmask"
+import platform
+
+def get_app_paths():
+    system = platform.system()
+    home = Path.home()
+    
+    if system == 'Windows':
+        # Config: %APPDATA%/PDFMask/config.json
+        app_data = Path(os.environ.get('APPDATA', home))
+        config_dir = app_data / "PDFMask"
+        config_file = config_dir / "config.json"
+        
+        # Save Path: ~/Documents/PDFMask
+        save_path = home / "Documents" / "PDFMask"
+    elif system == 'Darwin':
+        # Config: ~/Library/Application Support/PDFMask/config.json
+        config_dir = home / "Library" / "Application Support" / "PDFMask"
+        config_file = config_dir / "config.json"
+        
+        # Save Path: ~/PDFMask (Keep existing behavior for Mac, or move to Documents?)
+        # Let's keep ~/PDFMask for Mac to avoid changing user's expected location unexpectedly,
+        # or we could standardize on Documents. Let's stick to the user's current pattern for Mac
+        # but maybe Documents is cleaner? The user asked for "multi-platform support", 
+        # so let's use Documents for Windows but keep Mac as is to minimize disruption, 
+        # OR just use Documents for both which is cleaner.
+        # Let's use ~/PDFMask for Mac as per original code, to be safe.
+        save_path = home / "PDFMask"
+    else:
+        # Linux/Other
+        config_dir = home / ".config" / "pdfmask"
+        config_file = config_dir / "config.json"
+        save_path = home / "PDFMask"
+        
+    return config_file, save_path
+
+CONFIG_FILE, DEFAULT_SAVE_PATH = get_app_paths()
+
+# Ensure config directory exists
+try:
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.error(f"Failed to create config directory: {e}")
 
 DEFAULT_CONFIG = {
     "words": [],
@@ -19,7 +60,7 @@ DEFAULT_CONFIG = {
         "default_recipient": ""
     },
     "general_settings": {
-        "save_path": str(Path.home() / "PDFMask")
+        "save_path": str(DEFAULT_SAVE_PATH)
     }
 }
 

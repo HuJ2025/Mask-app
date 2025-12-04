@@ -99,9 +99,11 @@ function startPythonBackend() {
         return;
     }
 
-    const scriptPath = path.join(process.resourcesPath, 'server');
+    const executableName = process.platform === 'win32' ? 'server.exe' : 'server';
+    const scriptPath = path.join(process.resourcesPath, executableName);
 
     // Ensure executable permissions (common issue in packaged apps)
+    // On Windows, chmod might not be necessary or work the same, but keeping it in try-catch is safe
     try {
         fs.chmodSync(scriptPath, '755');
     } catch (err) {
@@ -110,26 +112,23 @@ function startPythonBackend() {
 
     console.log(`Starting backend: ${scriptPath}`);
 
-    // FIX: Manually construct a robust PATH including Homebrew
-    // This avoids needing 'fix-path' dependency which might not be installed
-    const extraPaths = [
-        '/opt/homebrew/bin',
-        '/opt/homebrew/sbin',
-        '/usr/local/bin',
-        '/usr/local/sbin',
-        '/usr/bin',
-        '/bin',
-        '/usr/sbin',
-        '/sbin'
-    ];
+    let env = { ...process.env };
 
-    // Construct new PATH: extraPaths + existing PATH
-    const newPath = extraPaths.join(':') + (process.env.PATH ? ':' + process.env.PATH : '');
-
-    const env = {
-        ...process.env,
-        PATH: newPath
-    };
+    // Only modify PATH on macOS/Linux to include Homebrew/local bin
+    if (process.platform !== 'win32') {
+        const extraPaths = [
+            '/opt/homebrew/bin',
+            '/opt/homebrew/sbin',
+            '/usr/local/bin',
+            '/usr/local/sbin',
+            '/usr/bin',
+            '/bin',
+            '/usr/sbin',
+            '/sbin'
+        ];
+        const newPath = extraPaths.join(':') + (process.env.PATH ? ':' + process.env.PATH : '');
+        env.PATH = newPath;
+    }
 
     pythonProcess = spawn(scriptPath, [], {
         env: env,

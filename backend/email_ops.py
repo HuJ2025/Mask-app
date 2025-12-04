@@ -39,6 +39,14 @@ def open_system_mail_client(recipient: str, subject: str, body: str, attachment_
         end tell
         '''
 
+        import platform
+        if platform.system() != 'Darwin':
+            logger.warning("System email client opening is only supported on macOS")
+            # Fallback or error? For now, just return or raise to avoid crash
+            # Could try simple mailto for Windows but without attachments
+            # subprocess.run(['start', f'mailto:{recipient}?subject={subject}&body={body}'], shell=True)
+            raise NotImplementedError("Email client integration is currently macOS only")
+
         subprocess.run(['osascript', '-e', apple_script], check=True)
         logger.info(f"Opened Mail app for {recipient}")
 
@@ -47,4 +55,63 @@ def open_system_mail_client(recipient: str, subject: str, body: str, attachment_
         raise Exception("Failed to open Mail app")
     except Exception as e:
         logger.error(f"Error opening system mail: {e}")
+        raise e
+
+def send_email_smtp(
+    recipient: str, 
+    subject: str, 
+    body: str, 
+    attachment_path: str,
+    smtp_server: str,
+    smtp_port: int,
+    sender_email: str,
+    sender_password: str
+):
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = recipient
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(body, 'plain'))
+
+    files_to_attach = []
+    if os.path.isdir(attachment_path):
+        for root, dirs, files in os.walk(attachment_path):
+            for file in files:
+                if not file.startswith('.'):
+                    files_to_attach.append(os.path.join(root, file))
+    else:
+        files_to_attach.append(attachment_path)
+
+    for file_path in files_to_attach:
+        try:
+            with open(file_path, "rb") as attachment:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(attachment.read())
+            
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename= {os.path.basename(file_path)}",
+            )
+            msg.attach(part)
+        except Exception as e:
+            logger.error(f"Failed to attach file {file_path}: {e}")
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, recipient, text)
+        server.quit()
+        logger.info(f"Email sent successfully to {recipient}")
+    except Exception as e:
+        logger.error(f"SMTP error: {e}")
         raise e
