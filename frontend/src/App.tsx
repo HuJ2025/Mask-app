@@ -391,6 +391,20 @@ function App() {
     }
   };
 
+  const handleOpenSaveDir = async () => {
+    try {
+      // Use the path from settings, or let backend default if not set
+      const path = configGeneralSettings?.save_path || null;
+      await fetch(`${API_URL}/api/open_folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+    } catch (e) {
+      console.error("Error opening save dir:", e);
+    }
+  };
+
   const [showEmailModal, setShowEmailModal] = useState(false);
 
   const handleSendEmail = async (recipient: string, subject: string, body: string) => {
@@ -496,6 +510,7 @@ function App() {
               canStart={files.length > 0 && words.length > 0 && !files.some(f => f.status === 'encrypted')}
               onStart={handleRedact}
               onOpenFolder={handleOpenFolder}
+              onOpenSaveDir={handleOpenSaveDir}
               onEmail={handleEmail}
               onRetry={() => setGlobalStatus('idle')}
               onCancel={handleCancel}

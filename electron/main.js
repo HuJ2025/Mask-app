@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -179,6 +179,18 @@ async function ensureBackendRunning() {
         // 这里你可以选择继续打开窗口，让前端自己提示错误
     }
 }
+
+// IPC Handler for folder selection
+ipcMain.handle('dialog:openDirectory', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    if (canceled) {
+        return null;
+    } else {
+        return filePaths[0];
+    }
+});
 
 app.whenReady().then(async () => {
     console.log('[main] app ready, isDev =', isDev, 'resourcesPath =', process.resourcesPath);

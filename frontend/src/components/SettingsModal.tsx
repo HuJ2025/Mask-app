@@ -316,14 +316,34 @@ export function SettingsModal({ isOpen, onClose, onSave, initialWords, initialPa
                                 </p>
                                 <div className="space-y-4">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-slate-300">Default Save Path</label>
-                                        <input
-                                            type="text"
-                                            value={generalSettings.save_path}
-                                            onChange={(e) => setGeneralSettings({ ...generalSettings, save_path: e.target.value })}
-                                            placeholder="/path/to/save/folder"
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
-                                        />
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-400 mb-2">Default Save Path</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={generalSettings.save_path}
+                                                    onChange={(e) => setGeneralSettings({ ...generalSettings, save_path: e.target.value })}
+                                                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                    placeholder="/path/to/save/files"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const path = await window.electronAPI.selectDirectory();
+                                                            if (path) {
+                                                                setGeneralSettings({ ...generalSettings, save_path: path });
+                                                            }
+                                                        } catch (e) {
+                                                            console.error("Failed to select directory:", e);
+                                                        }
+                                                    }}
+                                                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-colors"
+                                                >
+                                                    Browse
+                                                </button>
+                                            </div>
+                                        </div>
                                         <p className="text-xs text-slate-500">
                                             Processed files will be saved here. A timestamped subfolder will be created for each batch.
                                         </p>

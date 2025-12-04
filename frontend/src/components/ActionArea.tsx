@@ -10,6 +10,7 @@ interface ActionAreaProps {
     canStart: boolean;
     onStart: () => void;
     onOpenFolder: () => void;
+    onOpenSaveDir: () => void;
     onEmail: () => void;
     onRetry: () => void;
     onCancel: () => void;
@@ -24,6 +25,7 @@ export const ActionArea: React.FC<ActionAreaProps> = ({
     canStart,
     onStart,
     onOpenFolder,
+    onOpenSaveDir,
     onEmail,
     onRetry,
     onCancel,
@@ -32,14 +34,23 @@ export const ActionArea: React.FC<ActionAreaProps> = ({
     return (
         <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
             {status === 'idle' && (
-                <button
-                    onClick={onStart}
-                    disabled={!canStart}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
-                >
-                    <Play size={24} fill="currentColor" />
-                    Start Redact
-                </button>
+                <div className="space-y-3">
+                    <button
+                        onClick={onStart}
+                        disabled={!canStart}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-bold text-lg shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                        <Play size={24} fill="currentColor" />
+                        Start Redact
+                    </button>
+                    <button
+                        onClick={onOpenSaveDir}
+                        className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                    >
+                        <FolderOpen size={20} />
+                        Open Output Folder
+                    </button>
+                </div>
             )}
 
             {(status === 'uploading' || status === 'processing' || status === 'cancelling') && (
